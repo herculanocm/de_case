@@ -67,13 +67,13 @@ default_args = {
 }
 
 with DAG(
-        dag_id='datalake_fetch_raw_data_api_dag',
+        dag_id='datalake_bronze_fetch_raw_data_api_dag',
         schedule_interval=None,
         start_date=datetime(2024, 10, 18),
         default_args=default_args,
         concurrency=30,
         catchup=False,max_active_runs=1,
-        tags=['datalake', 'pipe', 'raw', 'api'],
+        tags=['datalake', 'pipe', 'raw', 'api', 'bronze'],
 ) as dag:
     
     task_init_seq_01 = EmptyOperator(

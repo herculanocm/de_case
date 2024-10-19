@@ -4,6 +4,12 @@ mkdir -p ./airflow/dags ./airflow/logs ./airflow/plugins ./airflow/config
 echo -e "AIRFLOW_UID=$(id -u)" > .env
 ```
 
+### Build custom Airflow image
+```
+cd ./airflow
+docker build -t airflow .
+```
+
 ### Initialize database for Airflow use
 ```
 docker compose up airflow-init
