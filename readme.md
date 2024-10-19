@@ -1,3 +1,8 @@
+### Create an external network (Globally recognization for containers)
+```
+docker network create decase
+```
+
 ### Setting the right Airflow user
 ```
 mkdir -p ./airflow/dags ./airflow/logs ./airflow/plugins ./airflow/config

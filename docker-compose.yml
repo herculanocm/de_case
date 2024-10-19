@@ -48,7 +48,6 @@
 #                                Default: ''
 #
 # Feel free to modify this file to suit your needs.
-
 ---
 x-airflow-common:
   &airflow-common
@@ -60,6 +59,7 @@ x-airflow-common:
   environment:
     &airflow-common-env
     AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+    AIRFLOW__CORE__SECRET_KEY: '4e6f2d6b5d3a8f9c3b0a5e6c7d8e9f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7'
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
     AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@postgres/airflow
     AIRFLOW__CELERY__BROKER_URL: redis://:@redis:6379/0
@@ -318,5 +318,6 @@ services:
 networks:
   decase:
     driver: bridge
+    external: true
 volumes:
   postgres-db-volume:

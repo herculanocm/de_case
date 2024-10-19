@@ -38,7 +38,7 @@ with DAG(
         auto_remove=True,
         command='/opt/bitnami/spark/bin/spark-submit /app/data/job_silver.py --arg1 value1',
         docker_url='unix://var/run/docker.sock',
-        network_mode='bridge',
+        network_mode='decase',
        mounts=[
             Mount(
                 source='/home/hcunha/dev/docker/de_case/spark/jobs',
@@ -50,6 +50,7 @@ with DAG(
             'SPARK_MASTER_URL': 'spark://spark-master:7077',
             'SPARK_HOME': '/opt/bitnami/spark',
         },
+        mount_tmp_dir=False,
     )
 
 task_init_seq_01 >> task_run_spark_job_silver
