@@ -3,6 +3,7 @@ import time
 import urllib3
 import logging
 from airflow.exceptions import AirflowException
+import json
 
 class FetchApiOperator(BaseOperator):
 
@@ -32,7 +33,7 @@ class FetchApiOperator(BaseOperator):
                 resp = http.request(self.type_request, self.url, headers=headers_authentication)
                 if 200 <= resp.status < 300:
                     self.xcom_push_result(context, resp)
-                    return resp  # Return the response if needed
+                    return resp.data.decode('utf-8')  # Return the response if needed
                 else:
                     logging.warning(f"Status error: {resp.status}")
                     logging.warning("Retrying...")
@@ -46,4 +47,6 @@ class FetchApiOperator(BaseOperator):
         raise AirflowException("Maximum retries exceeded")
 
     def xcom_push_result(self, context, result: urllib3.BaseHTTPResponse):
-        context['ti'].xcom_push(key=self.xcom_key, value=result.data.decode('utf-8'))
+        str_result = result.data.decode('utf-8')
+        logging.info(f"Pushing result to XCom with key: {self.xcom_key}, result: {str_result}")
+        context['ti'].xcom_push(key=self.xcom_key, value=str_result)
