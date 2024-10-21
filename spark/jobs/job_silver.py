@@ -4,6 +4,76 @@ from pyspark.sql import DataFrame
 from pyspark.sql.types import StringType, DoubleType, DateType, TimestampType, IntegerType, BooleanType, LongType
 import logging
 import datetime
+import boto3
+from botocore.exceptions import NoCredentialsError, ClientError
+import json
+
+def is_valid_json(value: str) -> bool:
+    """
+    Checks if string is a valid JSON.
+
+    Parameters:
+    - value (str): The string to check.
+
+    Returns:
+    - bool: True if the string is valid JSON, False otherwise.
+    """
+    try:
+        json.loads(value)
+        return True
+    except (ValueError, TypeError):
+        return False
+
+def check_minio_prefix_exists(endpoint_url: str, access_key: str, secret_key: str, bucket_name: str, prefix: str, logger: logging.Logger = None) -> bool:
+    """
+    Checks if a given prefix exists in a MinIO bucket by verifying the presence of objects under the prefix.
+
+    Parameters:
+    - endpoint_url (str): The endpoint URL for MinIO (e.g., 'http://localhost:9000').
+    - access_key (str): Access key for MinIO.
+    - secret_key (str): Secret key for MinIO.
+    - bucket_name (str): The bucket to check.
+    - prefix (str): The prefix to check (e.g., 'warehouse/tab_brewery/').
+    - logger (logging.Logger, optional): Logger for logging information and errors.
+
+    Returns:
+    - bool: True if the prefix exists (has at least one object), False otherwise.
+    """
+    try:
+        # Initialize S3 client with MinIO configurations
+        s3 = boto3.client(
+            's3',
+            endpoint_url=endpoint_url,
+            aws_access_key_id=access_key,
+            aws_secret_access_key=secret_key,
+            config=boto3.session.Config(signature_version='s3v4'),
+            verify=False  # Set to True if SSL is enabled
+        )
+        
+        # List objects under the specified prefix with a maximum of 1 key
+        response = s3.list_objects_v2(Bucket=bucket_name, Prefix=prefix, MaxKeys=1)
+        
+        exists = 'Contents' in response and len(response['Contents']) > 0
+        
+        if logger:
+            if exists:
+                logger.info(f"Prefix '{prefix}' exists in bucket '{bucket_name}'.")
+            else:
+                logger.info(f"Prefix '{prefix}' does not exist or is empty in bucket '{bucket_name}'.")
+        
+        return exists
+    except NoCredentialsError:
+        if logger:
+            logger.error("MinIO credentials not provided or incorrect.")
+        return False
+    except ClientError as e:
+        if logger:
+            logger.error(f"Client error while accessing MinIO: {e}")
+        return False
+    except Exception as e:
+        if logger:
+            logger.error(f"Unexpected error while checking prefix: {e}")
+        return False
 
 def cast_columns_types_by_schema(df: DataFrame, list_schema: list, logger: logging.Logger) -> DataFrame:
     """
@@ -119,33 +189,44 @@ def check_database_table_exists(spark_session: SparkSession):
     spark_session.sql("""
         
         CREATE TABLE IF NOT EXISTS nessie.dbw.tab_brewery (
-            id STRING,
-            name STRING,
-            brewery_type STRING,
-            address_1 STRING,
-            address_2 STRING,
-            address_3 STRING,
-            city STRING,
-            state_province STRING, 
-            postal_code STRING,
-            country STRING,
-            longitude FLOAT,
-            latitude FLOAT,
-            phone BIGINT,
-            website_url STRING,
-            state STRING,
-            street STRING
+            id STRING COMMENT '{"order_sort": 0, "description": "Unique identifier for the brewery."}',
+            name STRING COMMENT '{"order_sort": 1, "description": "Name of the brewery."}',
+            brewery_type STRING COMMENT '{"order_sort": 2, "description": "Type of brewery.", "partition": {"enabled": true, "order_sort": 0}}',
+            address_1 STRING COMMENT '{"order_sort": 3, "description": "First line of the brewery address."}',
+            address_2 STRING COMMENT '{"order_sort": 4, "description": "Second line of the brewery address."}',
+            address_3 STRING COMMENT '{"order_sort": 5, "description": "Third line of the brewery address."}',
+            city STRING COMMENT '{"order_sort": 6, "description": "City where the brewery is located.", "partition": {"enabled": true, "order_sort": 3}}',
+            state_province STRING COMMENT '{"order_sort": 7, "description": "State or province where the brewery is located.", "partition": {"enabled": true, "order_sort": 2}}',
+            postal_code STRING COMMENT '{"order_sort": 8, "description": "Postal code of the brewery."}',
+            country STRING COMMENT '{"order_sort": 9, "description": "Country where the brewery is located.", "partition": {"enabled": true, "order_sort": 1}}',
+            longitude FLOAT COMMENT '{"order_sort": 10, "description": "Longitude of the brewery location."}',
+            latitude FLOAT COMMENT '{"order_sort": 11, "description": "Latitude of the brewery location."}',
+            phone BIGINT COMMENT '{"order_sort": 12, "description": "Phone number of the brewery."}',
+            website_url STRING COMMENT '{"order_sort": 13, "description": "URL of the brewery website."}',
+            state STRING COMMENT '{"order_sort": 14, "description": "State of the brewery."}',
+            street STRING COMMENT '{"order_sort": 15, "description": "Street of the brewery."}'
         )
         USING iceberg
         PARTITIONED BY (
             brewery_type,
             country,
-            city,
-            state_province
+            state_province,
+            city
         )
         LOCATION 's3a://datalake-gold/warehouse/dbw/tab_brewery/'
 
     """)
+
+def get_columns_partitioned_by_schema(list_schema: list) -> list:
+    lst_return = []
+    for dcol in list_schema:
+        
+        if 'comment' in dcol and is_valid_json(dcol['comment']):
+            dcol['comment'] = json.loads(dcol['comment'])
+            if dcol['comment'].get('partition',{}).get('enabled', False):
+                lst_return.append(dcol)
+    lst_return.sort(key=lambda x: x['comment']['partition']['order_sort'])
+    return [col['col_name'] for col in lst_return]
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
@@ -155,31 +236,57 @@ if __name__ == "__main__":
     str_datetime_ref = spark_session.conf.get("spark.job_silver_app.datetime_ref", '1900-01-01 00:00:00')
     str_bucket_name = spark_session.conf.get("spark.job_silver_app.bucket_name", 'undefined')
     str_dataset_name = spark_session.conf.get("spark.job_silver_app.dataset_name", 'undefined')
-    logger.info(f'Str datetime reference: {str_datetime_ref}, bucket name: {str_bucket_name}, dataset name: {str_dataset_name}')
+    str_store_bucket_name = spark_session.conf.get("spark.job_silver_app.store_bucket_name", 'undefined')
+    logger.info(f'Str datetime reference: {str_datetime_ref}, bucket name: {str_bucket_name}, dataset name: {str_dataset_name}, store bucket name: {str_store_bucket_name}')
     datetime_ref = datetime.datetime.strptime(str_datetime_ref, '%Y-%m-%d_%H:%M:%S')
     str_prefix_bucket = f"s3a://{str_bucket_name}/{str_dataset_name}/sys_file_date={datetime_ref.strftime('%Y-%m-%d')}/"
     logger.info(f'Str prefix bucket: {str_prefix_bucket}')
 
-    
-    logger.info(f"Path {str_prefix_bucket} exists.")
-    df = (
-        spark_session.read
-            .option("multiline", "true")
-            .option('inferSchema', 'true')
-            .json(str_prefix_bucket)
-    )
-    df.printSchema()
+    lst_prefix_bucket = str_prefix_bucket.split('/')
+    str_bucket_name = lst_prefix_bucket[2]
+    str_prefix_path = '/'.join(lst_prefix_bucket[3:])
+    logger.info(f'Bucket name: {str_bucket_name}, prefix path: {str_prefix_path}')
 
-    int_qtd_lines = df.count()
-    logger.info(f"Number of lines: {int_qtd_lines}")
-    if int_qtd_lines > 0:
-        check_database_table_exists(spark_session)
+    minio_endpoint = spark_session.conf.get("spark.hadoop.fs.s3a.endpoint", 'undefined')
+    minio_access_key = spark_session.conf.get("spark.hadoop.fs.s3a.access.key", 'undefined')
+    minio_secret_key = spark_session.conf.get("spark.hadoop.fs.s3a.secret.key", 'undefined')
+    logger.info(f'MinIO endpoint: {minio_endpoint}, access key: {minio_access_key}')
 
-        describe_result = spark_session.sql("DESCRIBE TABLE nessie.dbw.tab_brewery").collect()
-        describe_list = [row.asDict() for row in describe_result]
-        # Log the result
-        logger.info(f"Describe result: {describe_list}")
-
-        df = cast_columns_types_by_schema(df, describe_list, logger)
+    if check_minio_prefix_exists(minio_endpoint, minio_access_key, minio_secret_key, str_bucket_name, str_prefix_path, logger):
+        logger.info(f"Path {str_prefix_bucket} exists.")
+        df = (
+            spark_session.read
+                .option("multiline", "true")
+                .option('inferSchema', 'true')
+                .json(str_prefix_bucket)
+        )
         df.printSchema()
-        df.show(5)
+
+        int_qtd_lines = df.count()
+        logger.info(f"Number of lines: {int_qtd_lines}")
+        if int_qtd_lines > 0:
+            check_database_table_exists(spark_session)
+
+            describe_result = spark_session.sql("DESCRIBE TABLE nessie.dbw.tab_brewery").distinct().collect()
+            describe_list = [row.asDict() for row in describe_result]
+            # Log the result
+            logger.info(f"Describe result: {describe_list}, cast columns types by schema...")
+
+            df = cast_columns_types_by_schema(df, describe_list, logger)
+
+            lst_partition = get_columns_partitioned_by_schema(describe_list)
+            logger.info(f"Sort column name partition: {lst_partition}")
+
+            str_output_path = f"s3a://{str_store_bucket_name}/warehouse/dbw/tab_brewery/"
+            logger.info(f"Output path: {str_output_path}")
+            df.write.partitionBy(*lst_partition).mode("overwrite").parquet(str_output_path)
+            logger.info(f"Data written to {str_output_path} by partitions {lst_partition}.")
+            # df.write.format("iceberg").mode("append").saveAsTable("nessie.dbw.tab_brewery")
+
+        else:
+            logger.info("No data to process.")
+    else:
+        logger.info(f"Path {str_prefix_bucket} does not exist.")
+
+    spark_session.stop()
+    logger.info('Job finished.')

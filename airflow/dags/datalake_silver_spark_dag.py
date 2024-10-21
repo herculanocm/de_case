@@ -5,6 +5,7 @@ from airflow.providers.docker.operators.docker import DockerOperator
 from docker.types import Mount
 
 MINIO_LAND_BUCKET_NAME = 'datalake-bronze' # Variable.get("MINIO_LAND_BUCKET_NAME")
+MINIO_SILVER_BUCKET_NAME = 'datalake-silver' # Variable.get("MINIO_SILVER_BUCKET_NAME")
 MINIO_DATASET_NAME = 'brewery' # Variable.get("MINIO_DATASET_NAME")
 MINIO_ENDPOINT = 'minio:9000' # Variable.get("MINIO_ENDPOINT")
 MINIO_ACCESS_KEY = 'admin' # Variable.get("minio_access_key")
@@ -70,6 +71,7 @@ with DAG(
             --conf spark.job_silver_app.bucket_name={{ params.bucket_name }} \
             --conf spark.job_silver_app.dataset_name={{ params.dataset_name }} \
             --conf spark.job_silver_app.datetime_ref={{ get_datetime_UTC_SaoPaulo(execution_date) }} \
+            --conf spark.job_silver_app.store_bucket_name={{ params.minio_silver_bucket_name }} \
             /app/data/jobs/job_silver.py
         """,
         docker_url='unix://var/run/docker.sock',
@@ -93,6 +95,7 @@ with DAG(
             'minio_secret_key': MINIO_SECRET_KEY,
             'minio_datalake_warehouse': MINIO_DATALAKE_WAREHOUSE,
             'nessie_uri': NESSIE_URI,
+            'minio_silver_bucket_name': MINIO_SILVER_BUCKET_NAME,
         },
     )
 
