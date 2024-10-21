@@ -17,7 +17,8 @@ STATIC_BASE_URL = 'https://api.openbrewerydb.org' # Best way get from Airflow va
     
 MINIO_ACCESS_KEY = 'admin' # Variable.get("minio_access_key")
 MINIO_SECRET_KEY = 'password' # Variable.get("minio_secret_key")
-MINIO_BUCKET_NAME = 'datalake-bronze' # Variable.get("minio_bucket_name")
+MINIO_LAND_BUCKET_NAME = 'datalake-bronze' # Variable.get("MINIO_LAND_BUCKET_NAME")
+MINIO_ENDPOINT = 'minio:9000' # Variable.get("MINIO_ENDPOINT")
 
 INT_NODES = 3 # Number of nodes to distribute the pages
 
@@ -154,7 +155,7 @@ def clean_breweries_meta(**kwargs):
         logging.info(f"Total pages of breweries: {int_pages}, execution_date: {execution_date.strftime('%Y-%m-%d')}")
         file_prefix = f"brewery/sys_file_date={execution_date.strftime('%Y-%m-%d')}"
         logging.info(f"Deleting files from Minio with prefix: {file_prefix}")
-        delete_files_from_minio(MINIO_BUCKET_NAME, file_prefix, 'minio:9000', MINIO_ACCESS_KEY, MINIO_SECRET_KEY)
+        delete_files_from_minio(MINIO_LAND_BUCKET_NAME, file_prefix, MINIO_ENDPOINT, MINIO_ACCESS_KEY, MINIO_SECRET_KEY)
         lst_dicts_nodes_pages = get_nodes_pages(int_pages, INT_NODES)
         logging.info(f"Nodes and pages: {lst_dicts_nodes_pages}")
         ti.xcom_push(key='nodes_distribuition_data', value=json.dumps(lst_dicts_nodes_pages))
@@ -185,7 +186,7 @@ def fech_breweries_node(**kwargs):
             if is_valid_json(response):
                 file_key = f"{str_prefix}/node_{node}_page_{page}.json"
                 logging.info(f"Saving page {page} from node {node} to Minio with key: {file_key}")
-                save_json_to_minio(response, MINIO_BUCKET_NAME, file_key, 'minio:9000', MINIO_ACCESS_KEY, MINIO_SECRET_KEY)
+                save_json_to_minio(response, MINIO_LAND_BUCKET_NAME, file_key, MINIO_ENDPOINT, MINIO_ACCESS_KEY, MINIO_SECRET_KEY)
             else:
                 raise AirflowException(f"Invalid JSON response from page {page}")
 

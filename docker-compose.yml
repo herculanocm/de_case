@@ -148,6 +148,17 @@ services:
       decase:
     restart: always
 
+   # Nessie Catalog Server Using In-Memory Store
+  nessie:
+    image: projectnessie/nessie:0.67.0
+    container_name: nessie
+    environment:
+      QUARKUS_PROFILE: inmemory
+    networks:
+      decase:
+    ports:
+      - 19120:19120
+
   airflow-webserver:
     <<: *airflow-common
     command: webserver
@@ -318,9 +329,30 @@ services:
       airflow-init:
         condition: service_completed_successfully
 
+  # Dremio
+  dremio:
+    platform: linux/x86_64
+    image: dremio/dremio-oss:latest
+    ports:
+      - 9047:9047
+      - 31010:31010
+      - 32010:32010
+    container_name: dremio
+    depends_on:
+      - nessie
+      - minio
+    networks:
+      decase:
+    environment:
+      AWS_ACCESS_KEY_ID: admin
+      AWS_SECRET_ACCESS_KEY: password
+    volumes:
+    - ./dremio/core-site.xml:/opt/dremio/conf/core-site.xml
+
 networks:
   decase:
     driver: bridge
     external: true
 volumes:
   postgres-db-volume:
+  hive-metastore-data:
