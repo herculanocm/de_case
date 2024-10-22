@@ -220,13 +220,37 @@ def check_database_table_exists(spark_session: SparkSession):
 def get_columns_partitioned_by_schema(list_schema: list) -> list:
     lst_return = []
     for dcol in list_schema:
-        
-        if 'comment' in dcol and is_valid_json(dcol['comment']):
-            dcol['comment'] = json.loads(dcol['comment'])
-            if dcol['comment'].get('partition',{}).get('enabled', False):
-                lst_return.append(dcol)
+        if dcol['comment'].get('partition',{}).get('enabled', False):
+            lst_return.append(dcol)
+
     lst_return.sort(key=lambda x: x['comment']['partition']['order_sort'])
     return [col['col_name'] for col in lst_return]
+
+def add_default_date_columns(list_schema: list) -> list:
+    lst_return = list_schema.copy()
+    lst_return.append({'col_name': 'year', 'data_type': 'varchar', 'comment': {'order_sort': 10000, 'partition': {'enabled': True, 'order_sort': -3}}})
+    lst_return.append({'col_name': 'month', 'data_type': 'varchar', 'comment': {'order_sort': 10001,'partition': {'enabled': True, 'order_sort': -2}}})
+    lst_return.append({'col_name': 'day', 'data_type': 'varchar', 'comment': {'order_sort': 10002,'partition': {'enabled': True, 'order_sort': -1}}})
+    return lst_return
+
+def adjust_columns_partition(df: DataFrame, lst_partition: list) -> DataFrame:
+    for col in lst_partition:
+        df = df.withColumn(col, F.upper(F.regexp_replace(F.trim(F.col(col)), r'\s+', '_')))
+    return df
+
+def convert_comment_from_json(list_schema: list) -> list:
+    for dcol in list_schema:
+        if 'comment' in dcol and is_valid_json(dcol['comment']):
+            dcol['comment'] = json.loads(dcol['comment'])
+        else:
+            dcol['comment'] = {
+                'partition': {},
+                'order_sort': 0,
+            }
+    return list_schema
+
+def remove_additional_columns(list_schema: list) -> list:
+    return [dcol for dcol in list_schema if '#' not in dcol['col_name']]
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
@@ -256,7 +280,6 @@ if __name__ == "__main__":
         logger.info(f"Path {str_prefix_bucket} exists.")
         df = (
             spark_session.read
-                .option("multiline", "true")
                 .option('inferSchema', 'true')
                 .json(str_prefix_bucket)
         )
@@ -265,23 +288,43 @@ if __name__ == "__main__":
         int_qtd_lines = df.count()
         logger.info(f"Number of lines: {int_qtd_lines}")
         if int_qtd_lines > 0:
+
+            # Add default date columns to the DataFrame
+            df = df.withColumn('year', (F.lit(datetime_ref.strftime('%Y'))))
+            df = df.withColumn('month', (F.lit(datetime_ref.strftime('%m'))))
+            df = df.withColumn('day', (F.lit(datetime_ref.strftime('%d'))))
+
             check_database_table_exists(spark_session)
 
             describe_result = spark_session.sql("DESCRIBE TABLE nessie.dbw.tab_brewery").distinct().collect()
             describe_list = [row.asDict() for row in describe_result]
+            describe_list = remove_additional_columns(describe_list)
+            describe_list = convert_comment_from_json(describe_list)
+            describe_list = add_default_date_columns(describe_list)
             # Log the result
-            logger.info(f"Describe result: {describe_list}, cast columns types by schema...")
+            logger.info(f"Result schema columns: {describe_list}")
 
             df = cast_columns_types_by_schema(df, describe_list, logger)
 
             lst_partition = get_columns_partitioned_by_schema(describe_list)
             logger.info(f"Sort column name partition: {lst_partition}")
 
+            # For columns partition TRIM, UPPER AND REPLACE SPACES BETWEEN WORDS
+            df = adjust_columns_partition(df, lst_partition)
+
+            describe_list.sort(key=lambda x: x['comment']['order_sort'])
+            lst_sorted_columns = [col['col_name'] for col in describe_list]
+            logger.info(f"Sorted columns: {lst_sorted_columns}")
+            df = df.select(*lst_sorted_columns)
+
             str_output_path = f"s3a://{str_store_bucket_name}/warehouse/dbw/tab_brewery/"
             logger.info(f"Output path: {str_output_path}")
             df.write.partitionBy(*lst_partition).mode("overwrite").parquet(str_output_path)
             logger.info(f"Data written to {str_output_path} by partitions {lst_partition}.")
-            # df.write.format("iceberg").mode("append").saveAsTable("nessie.dbw.tab_brewery")
+
+            # ONLY FOR CHECKS
+            #df = df.drop("year", "month", "day") 
+            #df.write.format("iceberg").mode("append").saveAsTable("nessie.dbw.tab_brewery")
 
         else:
             logger.info("No data to process.")

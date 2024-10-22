@@ -22,7 +22,7 @@ class FetchApiOperator(BaseOperator):
     def execute(self, context):
         retries = 0
         while retries < self.max_retries:
-            logging.info(f"Attempt: {retries + 1}")
+            logging.info(f"Attempt: {retries + 1}, URL: {self.url}")
 
             headers_authentication = {
                 'Content-Type': 'application/json',

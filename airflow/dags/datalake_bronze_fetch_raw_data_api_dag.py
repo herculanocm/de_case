@@ -20,6 +20,7 @@ MINIO_SECRET_KEY = 'password' # Variable.get("minio_secret_key")
 MINIO_LAND_BUCKET_NAME = 'datalake-bronze' # Variable.get("MINIO_LAND_BUCKET_NAME")
 MINIO_ENDPOINT = 'minio:9000' # Variable.get("MINIO_ENDPOINT")
 
+INT_ELEMENTS_PER_PAGE = 200 # Number of elements per page
 INT_NODES = 3 # Number of nodes to distribute the pages
 
 LST_TASKS_NODES = [] # List to store the nodes tasks
@@ -150,7 +151,7 @@ def clean_breweries_meta(**kwargs):
     ti = kwargs['ti']
     breweries_meta_data = json.loads(ti.xcom_pull(task_ids='task_fetch_breweries_meta', key='breweries_meta_data'))
     if 'total' in breweries_meta_data and int(breweries_meta_data['total']) > 0:
-        int_pages = math.ceil(int(breweries_meta_data['total']) / 200)
+        int_pages = math.ceil(int(breweries_meta_data['total']) / INT_ELEMENTS_PER_PAGE)
         execution_date = kwargs['execution_date']
         logging.info(f"Total pages of breweries: {int_pages}, execution_date: {execution_date.strftime('%Y-%m-%d')}")
         file_prefix = f"brewery/sys_file_date={execution_date.strftime('%Y-%m-%d')}"
@@ -173,20 +174,25 @@ def fech_breweries_node(**kwargs):
     if len(list_node) > 0:
         execution_date = kwargs['execution_date']
         str_prefix = f"brewery/sys_file_date={execution_date.strftime('%Y-%m-%d')}"
-        for page in lst_dicts_nodes_pages[0]['pages']:
+        for page in list_node[0]['pages']:
             logging.info(f"Searching page: {page}")
             response = FetchApiOperator(
                 task_id=f'task_fetch_breweries_page_{page}',
-                url=f'{STATIC_BASE_URL}/v1/breweries?page={page}&per_page=50',
+                url=f'{STATIC_BASE_URL}/v1/breweries?page={page}&per_page={INT_ELEMENTS_PER_PAGE}',
                 xcom_key=f'breweries_page_{page}',
                 max_retries=5,
                 wait_time=5,
                 type_request='GET'
             ).execute(context=kwargs)
             if is_valid_json(response):
+                lst_json = json.loads(response)
+                str_json_multiline = ''
+                for json_line in lst_json:
+                    str_json_multiline += json.dumps(json_line) + '\n'
+
                 file_key = f"{str_prefix}/node_{node}_page_{page}.json"
                 logging.info(f"Saving page {page} from node {node} to Minio with key: {file_key}")
-                save_json_to_minio(response, MINIO_LAND_BUCKET_NAME, file_key, MINIO_ENDPOINT, MINIO_ACCESS_KEY, MINIO_SECRET_KEY)
+                save_json_to_minio(str_json_multiline, MINIO_LAND_BUCKET_NAME, file_key, MINIO_ENDPOINT, MINIO_ACCESS_KEY, MINIO_SECRET_KEY)
             else:
                 raise AirflowException(f"Invalid JSON response from page {page}")
 
