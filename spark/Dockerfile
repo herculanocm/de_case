@@ -21,8 +21,8 @@ https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/3.3.2/hadoop-aws-3.3
 curl -o /opt/bitnami/spark/jars/aws-java-sdk-bundle-1.11.901.jar \
 https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/1.11.901/aws-java-sdk-bundle-1.11.901.jar
 
-RUN pip install boto3
 
+RUN pip install boto3 
 
 # Change ownership of the jars directory
 RUN chown -R 1001:1001 /opt/bitnami/spark/jars/

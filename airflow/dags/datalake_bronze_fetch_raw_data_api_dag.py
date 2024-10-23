@@ -1,5 +1,5 @@
 from airflow import DAG
-from datetime import datetime
+from datetime import datetime, timedelta
 from airflow.operators.empty import EmptyOperator
 from airflow.operators.python import BranchPythonOperator, PythonOperator
 from airflow.utils.trigger_rule import TriggerRule
@@ -11,6 +11,8 @@ import logging
 import json
 import io
 import math
+from typing import Any
+
 
 logging.basicConfig(level=logging.INFO)
 STATIC_BASE_URL = 'https://api.openbrewerydb.org' # Best way get from Airflow variable  Variable.get('STATIC_OPEN_BREWERY_DB_BASE_URL'), but for this example we are using a static value
@@ -24,6 +26,116 @@ INT_ELEMENTS_PER_PAGE = 200 # Number of elements per page
 INT_NODES = 3 # Number of nodes to distribute the pages
 
 LST_TASKS_NODES = [] # List to store the nodes tasks
+
+
+def create_notification_message(
+    execution_date: str, 
+    dag_id: str, 
+    message: str, 
+    task_init_seq: Any, 
+    task_end_seq: Any
+):
+    """
+    Create a formatted notification message detailing DAG execution.
+
+    Args:
+        execution_date (str): The execution date of the DAG.
+        dag_id (str): The identifier of the DAG.
+        message (str): Custom message to include in the notification.
+        task_init_seq (Any): Task instance containing the start_date attribute.
+        task_end_seq (Any): Task instance containing the end_date attribute.
+
+    Returns:
+        str: A formatted notification message.
+    """
+    duration_str = "00:00:00"  # Default duration
+
+    try:
+        start_date: datetime = task_init_seq.start_date
+        end_date: datetime = task_end_seq.end_date
+        if start_date and end_date:
+            duration: timedelta = end_date - start_date
+            # Format duration to HH:MM:SS
+            total_seconds = int(duration.total_seconds())
+            duration_obj = timedelta(seconds=total_seconds)
+            duration_str = str(duration_obj)
+    except AttributeError as e:
+        # Log the exception if logging is set up
+        # For example: logger.error(f"Attribute error: {e}")
+        pass  # Retain default duration_str
+
+    notification_message = (
+        f"*Dag*: {dag_id}\n"
+        f"*Parameter Date*: {execution_date}\n"
+        f"*Total Time*: {duration_str}\n"
+        f"*Msg*: {message}"
+    )
+    
+    #send by slack teams or email
+    print(notification_message)
+
+def create_failure_notification(
+    task_id: str, 
+    dag_id: str, 
+    logical_time: str, 
+    execution_time: str, 
+    log_url: str
+) -> str:
+    """
+    Create a formatted Slack message for task failure notifications.
+
+    Args:
+        task_id (str): The identifier of the failed task.
+        dag_id (str): The identifier of the DAG.
+        logical_time (str): The logical execution date of the DAG.
+        execution_time (str): The actual execution date/time.
+        log_url (str): URL to the task's log for debugging.
+
+    Returns:
+        str: A formatted Slack message indicating task failure.
+    """
+    slack_message = (
+        ":x: *Task Failed*\n"
+        f"*Task*: {task_id}\n"
+        f"*Dag*: {dag_id}\n"
+        f"*Parameter Date*: {logical_time}\n"
+        f"*Execution Date*: {execution_time}\n"
+        f"<{log_url}|*View Logs*>"
+    )
+    
+    return slack_message
+
+
+
+def event_failure_tasks(context):
+    """
+    Send a Slack notification when a task fails.
+
+    Args:
+        context (dict): Context dictionary with task instance information.
+    """
+    task_instance = context.get("task_instance")
+    task_id = task_instance.task_id
+    dag_id = task_instance.dag_id
+    logical_time = context.get("execution_date")
+    execution_time = task_instance.execution_date
+    log_url = task_instance.log_url
+    slack_message = create_failure_notification(
+        task_id, dag_id, logical_time, execution_time, log_url
+    )
+    # Send the Slack message
+    # slack_hook.send(slack_message)
+    print(slack_message)
+
+def send_notification_message(msg):
+    print(msg)
+    """
+    Send a notification message.
+
+    Args:
+        msg (str): The message to send.
+    """
+    print(msg)
 
 def delete_files_from_minio(bucket_name, file_prefix, minio_endpoint, access_key, secret_key, secure=False):
     
@@ -199,14 +311,15 @@ def fech_breweries_node(**kwargs):
 
 default_args = {
     'owner': 'herculanocm',
-    'email': ['herculanocm@outlook.com'],
+    "email": ["herculanocm@outlook.com"],
     'depends_on_past': False,
     'email_on_failure': False,
     'email_on_retry': False,
     'email_on_success': False,
-    'on_failure_callback': None,
+    'on_failure_callback': event_failure_tasks,
     'on_success_callback': None,
-    'retries': 2,
+    'retries': 1,
+    'retry_delay': timedelta(seconds=2),
 }
 
 with DAG(
@@ -217,6 +330,9 @@ with DAG(
         catchup=False,
         params={"custom_param": "default_value"}, 
         tags=['datalake', 'pipe', 'raw', 'api', 'bronze'],
+        user_defined_macros={
+            'create_notification_message': create_notification_message,
+        }
 ) as dag:
     
     task_init_seq_01 = EmptyOperator(
@@ -257,5 +373,13 @@ with DAG(
         trigger_rule=TriggerRule.NONE_FAILED
     )
 
-task_init_seq_01 >> task_fetch_breweries_meta >> task_check_and_clean_breweries_meta >> task_seq_02 >> [tt for tt in LST_TASKS_NODES] >> task_end_seq_01
+    task_calc_total_time = PythonOperator(
+        task_id='task_calc_total_time',
+        python_callable=send_notification_message,
+        op_args={'msg': """{{ create_notification_message(execution_date, dag.dag_id, 'Finished', dag_run.get_task_instance('task_init_seq_01'), dag_run.get_task_instance('task_end_seq_01')) }}"""},
+        trigger_rule=TriggerRule.ALL_SUCCESS
+    )
+
+task_init_seq_01 >> task_fetch_breweries_meta >> task_check_and_clean_breweries_meta >> task_seq_02 >> [tt for tt in LST_TASKS_NODES] >> task_end_seq_01 
 task_check_and_clean_breweries_meta >> task_end_seq_01
+task_end_seq_01 >> task_calc_total_time
