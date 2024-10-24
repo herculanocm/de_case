@@ -133,8 +133,8 @@ def get_datetime_UTC_SaoPaulo(execution_date: datetime) -> str:
     return (execution_date - timedelta(hours=3)).strftime('%Y-%m-%d_%H:%M:%S')
 
 with DAG(
-        dag_id='datalake_pipeline_breweries',
-        schedule_interval=None,
+        dag_id='0_datalake_pipeline_breweries',
+        schedule_interval="20 0 * * *",
         start_date=datetime(2024, 10, 18),
         default_args=default_args,
         params={"custom_param": "default_value"},
@@ -151,8 +151,8 @@ with DAG(
     )
 
     task_trigger_datalake_bronze_fetch_raw_data_api_dag = TriggerDagRunOperator(
-        task_id='task_trigger_datalake_bronze_fetch_raw_data_api_dag',
-        trigger_dag_id='datalake_bronze_fetch_raw_data_api_dag',
+        task_id='1_task_trigger_datalake_bronze_fetch_raw_data_api_dag',
+        trigger_dag_id='1_datalake_bronze_fetch_raw_data_api_dag',
         conf={"custom_param": "default_value"},
         reset_dag_run=True,
         wait_for_completion=True,
@@ -160,8 +160,8 @@ with DAG(
     )
 
     task_trigger_datalake_silver_spark_dag = TriggerDagRunOperator(
-        task_id='task_trigger_datalake_silver_spark_dag',
-        trigger_dag_id='datalake_silver_spark_dag',
+        task_id='2_task_trigger_datalake_silver_spark_dag',
+        trigger_dag_id='2_datalake_silver_spark_dag',
         conf={"custom_param": "default_value"},
         reset_dag_run=True,
         wait_for_completion=True,
@@ -169,8 +169,8 @@ with DAG(
     )
 
     task_trigger_datalake_gold_spark_dag = TriggerDagRunOperator(
-        task_id='task_trigger_datalake_gold_spark_dag',
-        trigger_dag_id='datalake_gold_spark_dag',
+        task_id='3_task_trigger_datalake_gold_spark_dag',
+        trigger_dag_id='3_datalake_gold_spark_dag',
         conf={"custom_param": "default_value"},
         reset_dag_run=True,
         wait_for_completion=True,
