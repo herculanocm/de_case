@@ -12,13 +12,13 @@ echo -e "AIRFLOW_UID=$(id -u)" > .env
 ### Build custom Airflow image
 ```
 cd ./airflow
-docker build -t airflow .
+docker build -t decase/airflow:2.9.3 ./airflow/
 ```
 
 ### Build custom Spark image
 ```
 cd ./spark
-docker build -t hcunha/spark:3.4.1 .
+docker build -t decase/spark:3.4.1 .
 ```
 
 ### Initialize database for Airflow use

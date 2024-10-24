@@ -15,7 +15,6 @@ env.bak/
 venv.bak/
 *.egg
 *.egg-info/
-dist/
 build/
 eggs/
 parts/

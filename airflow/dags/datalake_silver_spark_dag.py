@@ -6,7 +6,7 @@ from airflow.operators.python import PythonOperator
 from docker.types import Mount
 from airflow.utils.trigger_rule import TriggerRule
 from typing import Any
-
+import os
 
 MINIO_LAND_BUCKET_NAME = 'datalake-bronze' # Variable.get("MINIO_LAND_BUCKET_NAME")
 MINIO_SILVER_BUCKET_NAME = 'datalake-silver' # Variable.get("MINIO_SILVER_BUCKET_NAME")
@@ -17,6 +17,9 @@ MINIO_SECRET_KEY = 'password' # Variable.get("minio_secret_key")
 MINIO_DATALAKE_WAREHOUSE = 's3a://datalake-gold/warehouse' # Variable.get("MINIO_DATALAKE_WAREHOUSE")
 NESSIE_URI = 'http://nessie:19120/api/v1' # Variable.get("NESSIE_URI")
 NESSIE_SILVER_TABLE_NAME = 'tab_brewery' # Variable.get("NESSIE_SILVER_TABLE_NAME")
+
+HOST_SPARK_DIR = f"{os.getenv('CURRENT_DIR', '/default/path/if/not/set')}/spark"
+
 
 def create_notification_message(
     execution_date: str, 
@@ -196,7 +199,7 @@ with DAG(
         network_mode='decase',
         mounts=[
             Mount(
-                source='/home/hcunha/dev/docker/de_case/spark',
+                source=HOST_SPARK_DIR,
                 target='/app/data',
                 type='bind'
             ),

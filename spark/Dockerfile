@@ -33,8 +33,5 @@ USER 1001
 # Set environment variables
 ENV SPARK_HOME=/opt/bitnami/spark
 
-# Copy hive-site.xml into the image
-COPY hive-site.xml $SPARK_HOME/conf/
-
 # Expose necessary ports (if needed)
 EXPOSE 8080 7077
