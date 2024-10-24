@@ -5,33 +5,7 @@ import json
 from botocore.exceptions import NoCredentialsError, ClientError
 from pyspark.sql.types import StringType, DoubleType, DateType, TimestampType, IntegerType, BooleanType, LongType
 from pyspark.sql import DataFrame
-
-def make_notification(execution_date: str, dag_id: str, msg: str, task_init_seq, task_end_seq) -> str:
-    seconds = 0
-    try:
-        if task_init_seq.start_date is not None and task_end_seq.end_date is not None:
-            seconds = task_end_seq.end_date - task_init_seq.start_date
-    except:
-        seconds = 0
-
-    str_msg = f"""
-    *Dag*: {dag_id}
-    *Parameter Date*: {execution_date}
-    *Total Time*: {seconds}
-    *Msg*: {msg}
-    """
-    return str_msg
-
-def make_fail_notification_(task_id: str, dag_id: str, ts_logical_time: str, ts_execution_time: str, log_url: str) -> str:
-    slack_msg = f"""
-    :x: Task Failed.
-    *Task*: {task_id}
-    *Dag*: {dag_id}
-    *Parameter Date*: {ts_logical_time}
-    *Execution Date*: {ts_execution_time}
-    <{log_url}|*Logs*>
-    """
-    return slack_msg
+import pyspark.sql.functions as F
 
 def get_spark_session(str_app_name: str) -> SparkSession:
     return SparkSession.builder.appName(str_app_name) \
