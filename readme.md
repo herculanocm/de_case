@@ -48,6 +48,7 @@ To execute the script:
 ```bash
 chmod +x run.sh
 ./run.sh
+```
 
 
 ### 2. Configure MinIO
