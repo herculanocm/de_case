@@ -35,7 +35,7 @@ done
 NETWORK_NAME="decase"
 if ! docker network ls | grep -q "$NETWORK_NAME"; then
     echo "Docker network $NETWORK_NAME does not exist. Creating..."
-    docker network create "$NETWORK_NAME"
+    docker network create --driver bridge "$NETWORK_NAME"
     echo "Docker network $NETWORK_NAME created."
 else
     echo "Docker network $NETWORK_NAME already exists."

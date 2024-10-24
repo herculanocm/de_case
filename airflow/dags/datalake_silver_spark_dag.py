@@ -168,7 +168,7 @@ with DAG(
 
     task_run_spark_job_silver = DockerOperator(
         task_id='task_run_spark_job_silver',
-        image='hcunha/spark:3.4.1',
+        image='decase/spark:3.4.1',
         api_version='auto',
         auto_remove=True,
         command="""
